@@ -12,7 +12,7 @@ class PlaylistsService {
     this._cacheService = cacheService;
   }
 
-  async addPlaylist({ name, owner }) {
+  async addPlaylist({ name, owner, Id }) {
     const id = `playlist-${nanoid(16)}`;
 
     console.log(name, owner);
@@ -29,14 +29,14 @@ class PlaylistsService {
     }
 
     // baru
-    await this._cacheService.delete(`playlists:${owner}`);
+    await this._cacheService.delete(`playlists:${owner}-${Id}`);
     return result.rows[0].id;
   }
 
-  async getPlaylists(owner) {
+  async getPlaylists(Id) {
     // baru
     try {
-      const result = await this._cacheService.get(`playlists:${owner}`);
+      const result = await this._cacheService.get(`playlists:${Id}`);
       return JSON.parse(result);
     } catch (error) {
         const query = {
@@ -46,12 +46,12 @@ class PlaylistsService {
         LEFT JOIN collaborations ON collaborations.playlist_id = playlists.id
         WHERE playlists.owner = $1 OR collaborations.user_id = $1
         GROUP BY playlists.id, users.username`,
-        values: [owner],
+        values: [Id],
     };
     const result = await this._pool.query(query);
     const mappedResult = result.rows.map(mapDBToModelPlaylists);
 
-    await this._cacheService.set(`playlists:${owner}`, JSON.stringify(mappedResult));
+    await this._cacheService.set(`playlists:${Id}`, JSON.stringify(mappedResult));
     return mappedResult;
   }
 }
@@ -134,9 +134,9 @@ class PlaylistsService {
     await this._cacheService.delete(`songsPlaylist:${playlistId}`);
   }
 
-  async getPlaylistSongs(owner) {
+  async getPlaylistSongs(playlistId, credentialId) {
     try {
-      const result = await this._cacheService.get(`songsPlaylist:${owner}`);
+      const result = await this._cacheService.get(`songsPlaylist:${playlistId}`);
       return JSON.parse(result);
     } catch (error) {
         const query = {
@@ -146,23 +146,23 @@ class PlaylistsService {
         LEFT JOIN playlists as P ON P.id = PS.playlist_id
         LEFT JOIN collaborations ON collaborations.playlist_id = P.id
         WHERE P.owner = $1 OR collaborations.user_id = $1`,
-        values: [owner],
+        values: [credentialId],
     };
 
     const result = await this._pool.query(query);
     const mappedResult = result.rows.map(mapDBToModelPlaylistSongs);
 
-    await this._cacheService.set(`songsPlaylist:${owner}`, JSON.stringify(mappedResult));
+    await this._cacheService.set(`songsPlaylist:${playlistId}`, JSON.stringify(mappedResult));
 
     return mappedResult;
   }
 }
 
-  async deletePlaylistSongById(playlistid, songId) {
+  async deletePlaylistSongById(playlistId, songId) {
     const query = {
       text:
         'DELETE FROM playlistsongs WHERE playlist_id=$1 and song_id = $2 RETURNING id',
-      values: [playlistid, songId],
+      values: [playlistId, songId],
     };
 
     const result = await this._pool.query(query);
@@ -171,7 +171,7 @@ class PlaylistsService {
       throw new InvariantError('Songs gagal dihapus. Song Id tidak ditemukan');
     }
 
-    await this._cacheService.delete(`songs:${playlistid}`);
+    await this._cacheService.delete(`songsPlaylist:${playlistId}`);
   }
 
   async verifyAccess(playlistId, userId) {
